@@ -56,7 +56,7 @@ int main(){
 
 
 int child( void* arg){
-    
+     printf("SUCESS\n");
     return 0;
 }
 
