@@ -10,10 +10,6 @@
 #include <sys/syscall.h>
 #include <libgen.h>
 
-int child (void* );
-
-#define STACK_SIZE (1024*1024)
-
 struct child_config{
 
     int argc;
@@ -21,6 +17,14 @@ struct child_config{
     char** argv;
     char* mount_dir;
 };
+
+int child (void* );
+int pivot_root(char *, char* );
+int mounts(child_config* );
+
+#define STACK_SIZE (1024*1024)
+
+
 
 int main(int argc, char** argv){
     int err = 0;
@@ -32,7 +36,11 @@ int main(int argc, char** argv){
     config.argc = argc - 1;
     config.hostname = (char*)"uwu";
     config.argv = &argv[argc - config.argc];
+    
+    //Sample linux image
+    config.mount_dir = (char*)"/home/vaibhav/Containers/linux/";    
 
+    printf("%d\n",argc);
     int flags, child_pid;
     char *stack = 0;
     if( !(stack = (char *)malloc(STACK_SIZE))){
@@ -81,34 +89,39 @@ int child( void* arg){
     
     struct child_config *config = (child_config*)arg;
     printf("%s\n",config->argv[0]);
-    sleep(2);
+
     if( sethostname(config->hostname,strlen(config->hostname))
-        || mounts(config)
+        
     ){
         fprintf(stderr, "=> sethostname failed %m.\n");
         return -1;
     }
+    mounts(config);
 
+    fflush(NULL);
     if(execve(config->argv[0],config->argv,0) ){
         fprintf(stderr, "=> exec failed %m.\n");
         return -1;
     }
    
-
-
     return 0;
+}
+
+int pivot_root(char *new_root, char* old_root){
+
+   return syscall(SYS_pivot_root,new_root, old_root);
 }
 
 int mounts(child_config* config){
     // Remounting the root else pivot_root won't work.
-
+    printf("MOUNTING...\n");
     if( mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL) == -1){
 
         fprintf(stderr,"=> remounting failed %m.");
         return -1;
     }
 
-    char* temp_dir = "/tmp/con.XXXXXX";
+    char temp_dir[] = "/tmp/con.XXXXXX";
     if( !mkdtemp(temp_dir) ){
         fprintf(stderr, "=> Temp directory failed! \n");
         return -1;
@@ -120,7 +133,7 @@ int mounts(child_config* config){
         return -1;
     }
 
-    char* inner_temp_dir = "/tmp/con.XXXXXX/oldroot.XXXXXX";
+    char inner_temp_dir[] = "/tmp/con.XXXXXX/oldroot.XXXXXX";
     // we want same name con.XXXXXX so copy same thing from string
     memcpy(inner_temp_dir,temp_dir,sizeof(temp_dir)-1);
 
@@ -136,7 +149,7 @@ int mounts(child_config* config){
 
     char* old_root_dir = basename(inner_temp_dir);
     char old_root[sizeof(inner_temp_dir)+1] = {"/"};
-    strncpy(&old_root[1],old_root_dir,sizeof(old_root_dir));
+    strcpy(&old_root[1],old_root_dir);
 
     if(chdir("/")){
         fprintf(stderr,"=> chdir failed\n");
@@ -144,13 +157,21 @@ int mounts(child_config* config){
     }
 
     if( umount2(old_root, MNT_DETACH) ){
-        fprintf(stderr, "=> Unmount failed\n");
+        fprintf(stderr, "=> Unmount failed %m\n");
         return -1;
     }
 
-    fprintf(stdout,"=> Mount done....");
+    if( rmdir(old_root) ){
+        fprintf(stderr,"=> Oldroot Remove failed\n");
+        return -1;
+    }
+
+    fprintf(stdout,"=> Mount done....\n");
     return 0;
 
 }
+
+
+
 
 

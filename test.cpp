@@ -8,12 +8,10 @@ int main(int argc, char** argv){
     char** list;
     list = &argv[1];
     int pid;
-    pid=fork();
-    if(pid==0){
-    execve(list[0],list,0);}
-
-    else{
-        wait(&pid);
+    char temp_dir[] = "/tmp/con.XXXXXX";
+    if( !mkdtemp(temp_dir) ){
+        fprintf(stdout, "=> Temp directory failed! \n");
+        return -1;
     }
     return 0;
 }
